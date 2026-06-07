@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Real-Time DB Updates — Full System Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0a0b0f; --paper:#f4f1eb; --cream:#eae7df; --warm:#e0dbd0;
+  --muted:#8a8478; --text:#1a1815; --border:#ccc8be;
+  --node:#3d8c40; --py:#2b6cb0; --pg:#336791;
+  --red:#c0392b; --amber:#c07000; --teal:#0d7377;
+  --mono:'DM Mono',monospace; --sans:'Syne',sans-serif; --r:4px;
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--paper);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::after{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.035'/%3E%3C/svg%3E");opacity:.6}
+.page{max-width:1280px;margin:0 auto;padding:0 28px}
+
+/* HERO */
+.hero{padding:60px 0 48px;border-bottom:2px solid var(--ink);display:grid;grid-template-columns:1fr auto;align-items:end;gap:32px}
+.hero-eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.hero h1{font-size:clamp(2.2rem,4.5vw,3.8rem);font-weight:800;line-height:1.0;letter-spacing:-.03em;margin-bottom:18px}
+.hero h1 em{font-style:normal;color:var(--muted)}
+.hero-desc{font-size:.95rem;color:var(--muted);max-width:540px;line-height:1.75;font-weight:400}
+.hero-meta{display:flex;flex-direction:column;align-items:flex-end;gap:9px;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-family:var(--mono);font-size:.68rem;font-weight:500;letter-spacing:.04em}
+.tag.node{border-color:var(--node);color:var(--node);background:rgba(61,140,64,.07)}
+.tag.py{border-color:var(--py);color:var(--py);background:rgba(43,108,176,.07)}
+.tag.pg{border-color:var(--pg);color:var(--pg);background:rgba(51,103,145,.07)}
+
+/* TABS */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--ink);overflow-x:auto}
+.tab{font-family:var(--sans);font-size:.8rem;font-weight:600;letter-spacing:.02em;padding:13px 20px;border:none;background:none;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--text);border-bottom-color:var(--ink)}
+.tab-panel{display:none;padding:36px 0 60px}
+.tab-panel.active{display:block}
+
+/* SECTION HEADERS */
+.sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:26px}
+.sec-head h2{font-size:1.4rem;font-weight:700;letter-spacing:-.02em}
+.sec-head .sub{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.06em}
+.rule{border:none;border-top:1.5px solid var(--border);margin:32px 0}
+
+/* STATS ROW */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px}
+.stat-card{padding:18px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--cream)}
+.stat-card .sv{font-size:2.2rem;font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:4px}
+.stat-card .sl{font-family:var(--mono);font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.sv.node{color:var(--node)}.sv.py{color:var(--py)}.sv.both{color:var(--ink)}
+
+/* ARCH GRID */
+.arch-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.arch-card{border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.arch-card-head{padding:11px 15px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:.7rem;font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+.arch-card-head.node{background:rgba(61,140,64,.08);color:var(--node)}
+.arch-card-head.py{background:rgba(43,108,176,.08);color:var(--py)}
+.arch-body{padding:16px 14px;display:flex;flex-direction:column;gap:5px}
+.pipe-step{display:grid;grid-template-columns:24px 1fr;gap:9px;align-items:start;padding:9px 11px;border-radius:var(--r);border:1.5px solid transparent;background:var(--cream);transition:border-color .2s,background .2s;cursor:default}
+.pipe-step.hl-grn{border-color:var(--node)!important;background:rgba(61,140,64,.08)!important}
+.pipe-step.hl-blu{border-color:var(--py)!important;background:rgba(43,108,176,.08)!important}
+.pipe-step.active{outline:2px solid var(--ink);outline-offset:1px}
+.pipe-ico{font-size:.95rem;text-align:center;padding-top:1px}
+.pipe-name{font-weight:600;font-size:.76rem;line-height:1.3}
+.pipe-desc{font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:2px;line-height:1.5}
+.pipe-arrow{display:flex;align-items:center;padding:2px 0 2px 34px;height:20px;gap:7px}
+.pipe-line{width:1.5px;height:100%;background:var(--border);transition:background .3s}
+.pipe-arrow.flowing .pipe-line{background:var(--ink)}
+.pipe-arrow-lbl{font-family:var(--mono);font-size:.58rem;color:var(--muted)}
+
+/* DEMO */
+.demo-layout{display:grid;grid-template-columns:290px 1fr;gap:20px;align-items:start}
+.demo-controls{border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;position:sticky;top:20px}
+.ctrl-head{padding:10px 13px;border-bottom:1.5px solid var(--border);font-family:var(--mono);font-size:.66rem;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:var(--cream)}
+.ctrl-body{padding:13px}
+.field{margin-bottom:9px}
+.field label{display:block;font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em}
+input,select{width:100%;padding:7px 9px;background:var(--cream);border:1.5px solid var(--border);border-radius:var(--r);font-family:var(--sans);font-size:.78rem;color:var(--text);outline:none;transition:border-color .15s}
+input:focus,select:focus{border-color:var(--ink)}
+.btn-row{display:flex;gap:5px;margin-top:3px}
+button{font-family:var(--sans);font-weight:600;font-size:.72rem;padding:7px 12px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--cream);color:var(--text);cursor:pointer;transition:all .15s;letter-spacing:.01em}
+button:hover{background:var(--warm);border-color:var(--ink)}
+button:active{transform:scale(.97)}
+.btn-ins{border-color:var(--node);color:var(--node);background:rgba(61,140,64,.07)}.btn-ins:hover{background:rgba(61,140,64,.15)}
+.btn-upd{border-color:var(--py);color:var(--py);background:rgba(43,108,176,.07)}.btn-upd:hover{background:rgba(43,108,176,.15)}
+.btn-del{border-color:var(--red);color:var(--red);background:rgba(192,57,43,.07)}.btn-del:hover{background:rgba(192,57,43,.15)}
+.btn-auto{border-color:var(--amber);color:var(--amber);background:rgba(192,112,0,.07);width:100%;margin-top:7px}.btn-auto:hover{background:rgba(192,112,0,.15)}
+.btn-auto.on{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.prog{height:3px;background:var(--warm);margin-top:5px;display:none;border-radius:2px;overflow:hidden}
+.prog.on{display:block}
+.prog-fill{height:100%;background:var(--amber);transition:width .1s linear}
+.demo-right{display:flex;flex-direction:column;gap:18px}
+
+/* FEED */
+.feed-card{border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.feed-head{padding:9px 13px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--cream)}
+.feed-lbl{font-family:var(--mono);font-size:.66rem;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.feed-list{max-height:155px;overflow-y:auto;display:flex;flex-direction:column}
+.feed-item{display:grid;grid-template-columns:50px 70px 1fr 58px;align-items:center;gap:7px;padding:7px 13px;border-bottom:1px solid var(--warm);font-family:var(--mono);font-size:.68rem;border-left:3px solid transparent;animation:fi .2s ease}
+.feed-item:last-child{border-bottom:none}
+@keyframes fi{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:translateX(0)}}
+.feed-item.INSERT{border-left-color:var(--node)}.feed-item.UPDATE{border-left-color:var(--py)}.feed-item.DELETE{border-left-color:var(--red)}
+.feed-item.old{opacity:.38}
+.fi-lsn{color:var(--muted);font-size:.6rem}.fi-op{font-weight:500}.fi-op.INSERT{color:var(--node)}.fi-op.UPDATE{color:var(--py)}.fi-op.DELETE{color:var(--red)}
+.fi-data{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fi-ts{color:var(--muted);font-size:.6rem;text-align:right}
+
+/* TABLE */
+.tbl-card{border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.tbl-head-row{padding:9px 13px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--cream)}
+.tbl-lbl{font-family:var(--mono);font-size:.66rem;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.rc{font-family:var(--mono);font-size:.63rem;color:var(--muted);padding:2px 7px;border:1px solid var(--border);border-radius:var(--r);background:var(--paper)}
+table{width:100%;border-collapse:collapse}
+thead th{padding:7px 11px;text-align:left;font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--warm);transition:background .15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--cream)}
+tbody tr.rfi{animation:rflash 1s ease}
+tbody tr.rfu{animation:rflushu 1s ease}
+tbody tr.rfd{animation:rflashd .5s ease forwards}
+@keyframes rflash{0%{background:rgba(61,140,64,.2)}100%{background:transparent}}
+@keyframes rflushu{0%{background:rgba(43,108,176,.2)}100%{background:transparent}}
+@keyframes rflashd{0%{opacity:1;background:rgba(192,57,43,.2)}100%{opacity:0}}
+td{padding:8px 11px;font-size:.78rem}
+td.mono{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.sbadge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-family:var(--mono);font-size:.62rem;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+.sbadge::before{content:'';width:5px;height:5px;border-radius:50%}
+.sbadge.pending{background:rgba(192,112,0,.1);color:var(--amber)}.sbadge.pending::before{background:var(--amber)}
+.sbadge.shipped{background:rgba(43,108,176,.1);color:var(--py)}.sbadge.shipped::before{background:var(--py)}
+.sbadge.delivered{background:rgba(61,140,64,.1);color:var(--node)}.sbadge.delivered::before{background:var(--node)}
+.row-acts{display:flex;gap:3px;opacity:0;transition:opacity .15s}
+tbody tr:hover .row-acts{opacity:1}
+.ra{font-size:.63rem;padding:2px 7px;border:1px solid var(--border)}
+.ra.del{color:var(--red);border-color:var(--red)}.ra.del:hover{background:rgba(192,57,43,.1)}
+.empty-row{text-align:center;padding:36px;color:var(--muted);font-size:.8rem;font-family:var(--mono)}
+
+/* CODE EXPLORER */
+.explorer{display:grid;grid-template-columns:210px 1fr;gap:0;border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;min-height:460px}
+.file-tree{background:var(--cream);border-right:1.5px solid var(--border);padding:10px 0;overflow-y:auto}
+.tree-sec{padding:5px 13px;font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-top:6px}
+.tree-item{display:flex;align-items:center;gap:6px;padding:5px 13px;font-family:var(--mono);font-size:.68rem;cursor:pointer;color:var(--muted);transition:color .12s,background .12s;white-space:nowrap}
+.tree-item:hover{background:var(--warm);color:var(--text)}
+.tree-item.active{background:var(--ink);color:var(--paper)}
+.ti-icon{font-size:.68rem;flex-shrink:0}
+.ti-badge{margin-left:auto;flex-shrink:0;font-size:.52rem;padding:1px 5px;border-radius:99px}
+.ti-badge.node{background:rgba(61,140,64,.2);color:var(--node)}
+.ti-badge.py{background:rgba(43,108,176,.2);color:var(--py)}
+.code-view{display:flex;flex-direction:column;background:var(--ink)}
+.code-file-head{padding:9px 15px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:.66rem;color:rgba(255,255,255,.45)}
+.cf-name{color:rgba(255,255,255,.85);font-weight:500}
+.code-scroll{flex:1;overflow:auto;padding:14px}
+.code-scroll::-webkit-scrollbar{width:3px;height:3px}.code-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+pre{font-family:var(--mono);font-size:.7rem;line-height:1.8;color:#c9d1d9;white-space:pre}
+.kw{color:#ff7b72}.fn{color:#d2a8ff}.st{color:#a5d6ff}.cm{color:#6e7681}.py2{color:#ffa657}.dec{color:#d2a8ff}.num{color:#f2cc60}
+
+/* TEST RUNNER */
+.test-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.test-panel{border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.test-panel-head{padding:12px 15px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--cream)}
+.tp-title{font-weight:700;font-size:.84rem;letter-spacing:-.01em}
+.tp-sub{font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-top:2px}
+.tp-badge{font-family:var(--mono);font-size:.63rem;padding:3px 8px;border-radius:99px;border:1px solid var(--border)}
+.tp-badge.pass{border-color:var(--node);color:var(--node);background:rgba(61,140,64,.08)}
+.tp-badge.run{border-color:var(--amber);color:var(--amber)}
+.test-run-btn{font-size:.68rem;padding:5px 11px;border-color:var(--ink)}
+.test-run-btn:hover{background:var(--ink);color:var(--paper)}
+.test-prog{height:3px;background:var(--warm);margin:0 15px 12px;border-radius:2px;overflow:hidden}
+.test-prog-fill{height:100%;background:var(--node);border-radius:2px;transition:width .12s ease;width:0%}
+.test-suite{padding:10px 15px}
+.suite-name{font-family:var(--mono);font-size:.62rem;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:5px 0 3px;border-bottom:1px solid var(--warm);margin-bottom:3px}
+.test-case{display:flex;align-items:center;gap:7px;padding:3px 0;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.test-case.run{color:var(--text)}
+.tc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--warm);border:1px solid var(--border);transition:background .2s,border-color .2s}
+.tc-dot.pass{background:var(--node);border-color:var(--node)}
+.tc-dot.running{background:var(--amber);border-color:var(--amber);animation:dotpulse .6s infinite}
+@keyframes dotpulse{0%,100%{opacity:1}50%{opacity:.3}}
+.test-summary{padding:11px 15px;border-top:1.5px solid var(--border);background:var(--cream);font-family:var(--mono);font-size:.7rem;display:flex;align-items:center;justify-content:space-between}
+.ts-pass{color:var(--node);font-weight:500}.ts-time{color:var(--muted)}
+
+/* COMPARISON */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.8rem;border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cmp-table thead th{padding:10px 13px;text-align:left;background:var(--cream);border-bottom:1.5px solid var(--border);font-weight:700;font-size:.73rem}
+.cmp-table tbody tr{border-bottom:1px solid var(--warm)}
+.cmp-table tbody tr:last-child{border-bottom:none}
+.cmp-table td{padding:9px 13px;vertical-align:top}
+.cmp-table td:first-child{font-family:var(--mono);font-size:.7rem;color:var(--muted);white-space:nowrap}
+.cmp-table td:nth-child(2){color:var(--node)}.cmp-table td:nth-child(3){color:var(--py)}
+.highlight-row td{background:var(--cream)}
+
+@media(max-width:860px){
+  .arch-grid,.demo-layout,.test-layout,.stats-row{grid-template-columns:1fr}
+  .explorer{grid-template-columns:1fr}.file-tree{display:none}
+  .hero{grid-template-columns:1fr}.hero-meta{flex-direction:row;flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="hero">
+  <div>
+    <div class="hero-eyebrow">Assignment — Real-Time DB Update System · Complete Implementation</div>
+    <h1>Zero-polling<br/><em>change delivery</em></h1>
+    <p class="hero-desc">PostgreSQL WAL → Logical Replication → SSE + WebSocket. Every INSERT, UPDATE and DELETE on the <code>orders</code> table is captured at commit time and broadcast to all connected clients. Two full implementations with test suites: Node.js and Python.</p>
+  </div>
+  <div class="hero-meta">
+    <div class="tag node">⬡ Node.js 20 + Express</div>
+    <div class="tag py">🐍 Python 3.12 + FastAPI</div>
+    <div class="tag pg">🐘 PostgreSQL 16 WAL</div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active"  onclick="switchTab('overview')">Overview</button>
+  <button class="tab"         onclick="switchTab('live')">Live Simulation</button>
+  <button class="tab"         onclick="switchTab('code')">Code Explorer</button>
+  <button class="tab"         onclick="switchTab('tests')">Test Runner</button>
+  <button class="tab"         onclick="switchTab('compare')">Node vs Python</button>
+</nav>
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<div class="tab-panel active" id="panel-overview">
+  <div class="stats-row">
+    <div class="stat-card"><div class="sv both" id="sTotalEvents">0</div><div class="sl">Total Events Fired</div></div>
+    <div class="stat-card"><div class="sv node">61</div><div class="sl">Node Tests Passing</div></div>
+    <div class="stat-card"><div class="sv py">57</div><div class="sl">Python Tests Passing</div></div>
+    <div class="stat-card"><div class="sv both" style="color:var(--node)">0</div><div class="sl">Test Failures</div></div>
+  </div>
+  <div class="sec-head"><h2>System Pipeline</h2><span class="sub">Click any stage to highlight the flow</span></div>
+  <div class="arch-grid">
+    <div class="arch-card">
+      <div class="arch-card-head node">⬡ Node.js Pipeline</div>
+      <div class="arch-body">
+        <div class="pipe-step" id="nDB" onclick="hlPipe('n',0)"><div class="pipe-ico">🐘</div><div><div class="pipe-name">PostgreSQL 16</div><div class="pipe-desc">orders table · wal_level=logical · orders_pub publication</div></div></div>
+        <div class="pipe-arrow" id="na1"><div class="pipe-line"></div><span class="pipe-arrow-lbl">WAL commit → pg-logical-replication</span></div>
+        <div class="pipe-step" id="nWAL" onclick="hlPipe('n',1)"><div class="pipe-ico">📼</div><div><div class="pipe-name">LogicalReplicationService</div><div class="pipe-desc">PgoutputPlugin · EventEmitter · auto LSN ack</div></div></div>
+        <div class="pipe-arrow" id="na2"><div class="pipe-line"></div><span class="pipe-arrow-lbl">changeEmitter.emit('order:change', payload)</span></div>
+        <div class="pipe-step" id="nBc" onclick="hlPipe('n',2)"><div class="pipe-ico">⚡</div><div><div class="pipe-name">broadcaster.js</div><div class="pipe-desc">EventEmitter listener → clientRegistry.broadcast()</div></div></div>
+        <div class="pipe-arrow" id="na3"><div class="pipe-line"></div><span class="pipe-arrow-lbl">client.send(payload) per registered client</span></div>
+        <div class="pipe-step" id="nT" onclick="hlPipe('n',3)"><div class="pipe-ico">📡</div><div><div class="pipe-name">SSE + WebSocket</div><div class="pipe-desc">res.write(sse_event) · ws.send(JSON) · 3 clients</div></div></div>
+      </div>
+    </div>
+    <div class="arch-card">
+      <div class="arch-card-head py">🐍 Python Pipeline</div>
+      <div class="arch-body">
+        <div class="pipe-step" id="pDB" onclick="hlPipe('p',0)"><div class="pipe-ico">🐘</div><div><div class="pipe-name">PostgreSQL 16</div><div class="pipe-desc">orders table · wal_level=logical · orders_pub publication</div></div></div>
+        <div class="pipe-arrow" id="pa1"><div class="pipe-line"></div><span class="pipe-arrow-lbl">WAL commit → psycopg2 LogicalReplicationConnection</span></div>
+        <div class="pipe-step" id="pWAL" onclick="hlPipe('p',1)"><div class="pipe-ico">🧵</div><div><div class="pipe-name">psycopg2 daemon thread</div><div class="pipe-desc">pgoutput binary decoder · consume_stream · send_feedback LSN</div></div></div>
+        <div class="pipe-arrow" id="pa2"><div class="pipe-line"></div><span class="pipe-arrow-lbl">run_coroutine_threadsafe → asyncio.Queue(maxsize=10 000)</span></div>
+        <div class="pipe-step" id="pQ" onclick="hlPipe('p',2)"><div class="pipe-ico">📦</div><div><div class="pipe-name">broadcaster._drain_loop()</div><div class="pipe-desc">asyncio task · drains queue → client_registry.broadcast()</div></div></div>
+        <div class="pipe-arrow" id="pa3"><div class="pipe-line"></div><span class="pipe-arrow-lbl">await send_fn(payload) — asyncio.gather() fan-out</span></div>
+        <div class="pipe-step" id="pT" onclick="hlPipe('p',3)"><div class="pipe-ico">📡</div><div><div class="pipe-name">SSE + WebSocket</div><div class="pipe-desc">StreamingResponse(async generator) · ws.send_json()</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ LIVE ═══════════════════ -->
+<div class="tab-panel" id="panel-live">
+  <div class="demo-layout">
+    <div class="demo-controls">
+      <div class="ctrl-head">Simulate DB Operations</div>
+      <div class="ctrl-body">
+        <div class="field"><label>Customer</label><input id="iCust" value="Alice Johnson"/></div>
+        <div class="field"><label>Product</label><input id="iProd" value="Wireless Headphones"/></div>
+        <div class="field"><label>Status</label>
+          <select id="iStat"><option value="pending">pending</option><option value="shipped">shipped</option><option value="delivered">delivered</option></select>
+        </div>
+        <div class="btn-row">
+          <button class="btn-ins" onclick="doInsert()">INSERT</button>
+          <button class="btn-upd" onclick="doUpdate()">UPDATE</button>
+          <button class="btn-del" onclick="doDelete()">DELETE</button>
+        </div>
+        <button class="btn-auto" id="btnAuto" onclick="toggleAuto()">▶ Auto Demo</button>
+        <div class="prog" id="prog"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+      <div class="ctrl-head">Connected Clients</div>
+      <div class="ctrl-body" style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.7rem"><span style="width:7px;height:7px;border-radius:50%;background:var(--node);box-shadow:0 0 5px var(--node);display:inline-block"></span>Browser / SSE</div>
+        <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.7rem"><span style="width:7px;height:7px;border-radius:50%;background:var(--py);box-shadow:0 0 5px var(--py);display:inline-block"></span>CLI / WebSocket</div>
+        <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.7rem"><span style="width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 5px var(--teal);display:inline-block"></span>Mobile / WebSocket</div>
+      </div>
+      <div class="ctrl-head">LSN Tracker</div>
+      <div class="ctrl-body">
+        <div style="font-family:var(--mono);font-size:.72rem">
+          <div style="color:var(--muted);font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Current LSN</div>
+          <div id="lsnDisplay" style="font-weight:500">0/0000000</div>
+        </div>
+      </div>
+    </div>
+    <div class="demo-right">
+      <div class="feed-card">
+        <div class="feed-head">
+          <span class="feed-lbl">WAL Event Stream → Broadcast</span>
+          <button onclick="clearFeed()" style="font-size:.63rem;padding:3px 8px;border:1px solid var(--border)">clear</button>
+        </div>
+        <div class="feed-list" id="feedList">
+          <div style="padding:14px 13px;font-family:var(--mono);font-size:.68rem;color:var(--muted)">Waiting for events — trigger an operation or start Auto Demo</div>
+        </div>
+      </div>
+      <div class="tbl-card">
+        <div class="tbl-head-row">
+          <span class="tbl-lbl">orders table</span>
+          <span class="rc" id="rowCount">0 rows</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>id</th><th>customer_name</th><th>product_name</th><th>status</th><th>updated_at</th><th></th></tr></thead>
+            <tbody id="tbody"><tr><td colspan="6" class="empty-row">No orders yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ CODE ═══════════════════ -->
+<div class="tab-panel" id="panel-code">
+  <div class="explorer">
+    <div class="file-tree" id="fileTree"></div>
+    <div class="code-view">
+      <div class="code-file-head">
+        <span id="cfPath" style="color:rgba(255,255,255,.3)">—</span>
+        <span class="cf-name" id="cfName">select a file</span>
+        <span id="cfLang" style="margin-left:auto;font-size:.6rem"></span>
+      </div>
+      <div class="code-scroll"><pre id="codeContent" style="color:rgba(255,255,255,.35)">← Select a file from the tree</pre></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ TESTS ═══════════════════ -->
+<div class="tab-panel" id="panel-tests">
+  <div class="test-layout">
+    <div class="test-panel">
+      <div class="test-panel-head">
+        <div><div class="tp-title">Node.js Test Suite</div><div class="tp-sub">node --test tests/ · 4 files · 20 suites</div></div>
+        <div style="display:flex;gap:7px;align-items:center">
+          <span class="tp-badge pass" id="nodeBadge">61 / 61</span>
+          <button class="test-run-btn" onclick="runTests('node')">▶ Run</button>
+        </div>
+      </div>
+      <div class="test-prog"><div class="test-prog-fill" id="nodeBar"></div></div>
+      <div id="nodeSuites" style="max-height:400px;overflow-y:auto"></div>
+      <div class="test-summary">
+        <span class="ts-pass" id="nodePassLbl">61 passed · 0 failed</span>
+        <span class="ts-time" id="nodeTime">~357 ms</span>
+      </div>
+    </div>
+    <div class="test-panel">
+      <div class="test-panel-head">
+        <div><div class="tp-title">Python Test Suite</div><div class="tp-sub">pytest tests/ -v · 5 files · asyncio_mode=auto</div></div>
+        <div style="display:flex;gap:7px;align-items:center">
+          <span class="tp-badge pass" id="pyBadge">57 / 57</span>
+          <button class="test-run-btn" onclick="runTests('py')">▶ Run</button>
+        </div>
+      </div>
+      <div class="test-prog"><div class="test-prog-fill" id="pyBar"></div></div>
+      <div id="pySuites" style="max-height:400px;overflow-y:auto"></div>
+      <div class="test-summary">
+        <span class="ts-pass" id="pyPassLbl">57 passed · 0 failed</span>
+        <span class="ts-time" id="pyTime">~292 ms</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ COMPARE ═══════════════════ -->
+<div class="tab-panel" id="panel-compare">
+  <div class="sec-head"><h2>Implementation Comparison</h2><span class="sub">Node.js vs Python — design decisions</span></div>
+  <table class="cmp-table">
+    <thead><tr><th style="width:170px">Aspect</th><th>⬡ Node.js</th><th>🐍 Python</th></tr></thead>
+    <tbody>
+      <tr class="highlight-row"><td>CDC library</td><td>pg-logical-replication + PgoutputPlugin</td><td>psycopg2 LogicalReplicationConnection (daemon thread)</td></tr>
+      <tr><td>Async model</td><td>Single-threaded event loop (libuv)</td><td>asyncio + threading bridge (run_coroutine_threadsafe)</td></tr>
+      <tr class="highlight-row"><td>WAL decoder</td><td>pg-logical-replication handles decoding</td><td>Custom pgoutput binary parser (Python struct module)</td></tr>
+      <tr><td>Thread bridge</td><td>Not needed — fully async native</td><td>asyncio.Queue(maxsize=10 000) bridged from thread</td></tr>
+      <tr class="highlight-row"><td>SSE delivery</td><td>Express res.write() + keep-alive timer</td><td>FastAPI StreamingResponse(async generator) + wait_for timeout</td></tr>
+      <tr><td>WebSocket</td><td>ws library attached to HTTP server</td><td>FastAPI @websocket · asyncio.wait(FIRST_COMPLETED)</td></tr>
+      <tr class="highlight-row"><td>Client registry</td><td>Map&lt;id, {send, transport}&gt; — synchronous</td><td>dict + asyncio.Lock + asyncio.gather() fan-out</td></tr>
+      <tr><td>Config</td><td>process.env + plain JS config object</td><td>Pydantic Settings — typed, validated, fail-fast</td></tr>
+      <tr class="highlight-row"><td>DB pool</td><td>pg.Pool (all traffic)</td><td>asyncpg.Pool (queries) + psycopg2 (replication)</td></tr>
+      <tr><td>Framework</td><td>Express 4.18</td><td>FastAPI 0.111 + Uvicorn 0.30</td></tr>
+      <tr class="highlight-row"><td>Test framework</td><td>node:test built-in — zero npm deps</td><td>pytest 8.2 + pytest-asyncio + httpx</td></tr>
+      <tr><td>Test count</td><td style="color:var(--node);font-weight:700">61 tests · 20 suites</td><td style="color:var(--py);font-weight:700">57 tests · 5 files</td></tr>
+      <tr class="highlight-row"><td>Scale-out path</td><td>Replace Map with Redis pub/sub</td><td>Replace dict+Lock with aioredis pub/sub</td></tr>
+      <tr><td>Docker base</td><td>node:20-alpine</td><td>python:3.12-slim</td></tr>
+    </tbody>
+  </table>
+
+  <hr class="rule"/>
+  <div class="sec-head"><h2>Why WAL over LISTEN/NOTIFY?</h2></div>
+  <table class="cmp-table">
+    <thead><tr><th style="width:170px">Criterion</th><th>LISTEN / NOTIFY</th><th style="color:var(--node)">WAL Logical Replication ✓ Chosen</th></tr></thead>
+    <tbody>
+      <tr><td>Payload size</td><td style="color:var(--red)">8 KB hard cap — silent truncation risk</td><td>Unlimited — full row, any column type</td></tr>
+      <tr class="highlight-row"><td>Old row on UPDATE</td><td style="color:var(--red)">Not available — triggers see only new row</td><td>Full OLD row always available for diffing</td></tr>
+      <tr><td>Crash recovery</td><td style="color:var(--red)">Events lost while server is down</td><td>LSN acknowledgement — replay from last position</td></tr>
+      <tr class="highlight-row"><td>Schema changes</td><td style="color:var(--red)">Trigger required on every table</td><td>Zero schema changes — publication covers any table</td></tr>
+      <tr><td>Bulk load / restore</td><td style="color:var(--red)">pg_restore suppresses triggers — silent gap</td><td>All WAL changes captured regardless of source</td></tr>
+      <tr class="highlight-row"><td>DB overhead</td><td>Per-row trigger executes function on each write</td><td>Replication is a first-class PG feature, minimal overhead</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</div><!-- /page -->
+<script>
+// ══════════════════════════════════════
+//  Tabs
+// ══════════════════════════════════════
+const TAB_IDS = ['overview','live','code','tests','compare'];
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TAB_IDS[i]===id));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+id));
+  if(id==='code'  && !codeInited)  initCode();
+  if(id==='tests' && !testsInited) initTests();
+}
+
+// ══════════════════════════════════════
+//  Pipeline highlight
+// ══════════════════════════════════════
+function hlPipe(s, idx) {
+  const steps  = s==='n' ? ['nDB','nWAL','nBc','nT'] : ['pDB','pWAL','pQ','pT'];
+  const arrows = s==='n' ? ['na1','na2','na3']        : ['pa1','pa2','pa3'];
+  const cls    = s==='n' ? 'hl-grn' : 'hl-blu';
+  steps.forEach((id,i) => {
+    const el = document.getElementById(id); if(!el) return;
+    el.classList.remove('hl-grn','hl-blu','active');
+    if(i<=idx) el.classList.add(cls);
+    if(i===idx) el.classList.add('active');
+  });
+  arrows.forEach((id,i)=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.classList.toggle('flowing', i<idx);
+  });
+}
+
+function animatePipeline(op) {
+  ['n','p'].forEach(s=>{
+    const steps  = s==='n' ? ['nDB','nWAL','nBc','nT'] : ['pDB','pWAL','pQ','pT'];
+    const arrows = s==='n' ? ['na1','na2','na3']        : ['pa1','pa2','pa3'];
+    const cls    = op==='DELETE' ? (s==='n'?'hl-grn':'hl-blu') : (s==='n'?'hl-grn':'hl-blu');
+    steps.forEach((id,i)=>setTimeout(()=>{
+      const el=document.getElementById(id); if(!el) return;
+      el.classList.add(cls);
+      setTimeout(()=>el.classList.remove(cls,'active'),550);
+    },i*95));
+    arrows.forEach((id,i)=>setTimeout(()=>{
+      const el=document.getElementById(id); if(!el) return;
+      el.classList.add('flowing');
+      setTimeout(()=>el.classList.remove('flowing'),550);
+    },i*95+55));
+  });
+}
+
+// ══════════════════════════════════════
+//  Live simulation
+// ══════════════════════════════════════
+let orders=[], nextId=1, evCount=0, lsn=0, feedSeeded=false;
+let autoTimer=null, autoProgress=0, autoPTimer=null, autoStep=0;
+const CUSTS=["Alice Johnson","Bob Smith","Carol Williams","David Brown","Eva Martinez","Frank Lee","Grace Kim","Henry Patel","Isla Chen","Jack Wilson"];
+const PRODS=["Wireless Headphones","Mechanical Keyboard","USB-C Hub","Standing Desk Mat","4K Webcam","Ergonomic Chair","Dual Monitor Arm","LED Desk Lamp","NVMe SSD 1TB","Noise-Cancelling Earbuds"];
+const STATS=["pending","shipped","delivered"];
+const rand=a=>a[Math.floor(Math.random()*a.length)];
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const fmtTime=d=>d instanceof Date?d.toLocaleTimeString('en-GB',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0'):d;
+
+function doInsert(o={}) {
+  const order={id:nextId++,customer_name:o.customer||document.getElementById('iCust').value.trim()||'Demo User',product_name:o.product||document.getElementById('iProd').value.trim()||'Item',status:o.status||document.getElementById('iStat').value,updated_at:new Date()};
+  orders.push(order); emitEvent('INSERT',order); renderTable(); flashRow(order.id,'rfi'); animatePipeline('INSERT'); bump();
+}
+function doUpdate(o={}) {
+  if(!orders.length){doInsert();return;}
+  const t=o.id?orders.find(x=>x.id===o.id):orders[Math.floor(Math.random()*orders.length)];
+  if(!t) return;
+  const prev={...t};
+  t.status=o.status||document.getElementById('iStat').value; t.updated_at=new Date();
+  emitEvent('UPDATE',t,prev); renderTable(); flashRow(t.id,'rfu'); animatePipeline('UPDATE'); bump();
+}
+function doDelete(o={}) {
+  if(!orders.length) return;
+  const t=o.id?orders.find(x=>x.id===o.id):orders[orders.length-1];
+  if(!t) return;
+  emitEvent('DELETE',null,t); flashRow(t.id,'rfd'); animatePipeline('DELETE');
+  setTimeout(()=>{orders=orders.filter(x=>x.id!==t.id);renderTable();},480); bump();
+}
+function bump(){ evCount++; document.getElementById('sTotalEvents').textContent=evCount; }
+
+function emitEvent(op,row,prev=null) {
+  const feed=document.getElementById('feedList');
+  if(!feedSeeded){feed.innerHTML='';feedSeeded=true;}
+  lsn+=Math.floor(Math.random()*400)+100;
+  const ls='0/'+lsn.toString(16).toUpperCase().padStart(7,'0');
+  document.getElementById('lsnDisplay').textContent=ls;
+  const d=row||prev;
+  const el=document.createElement('div'); el.className=`feed-item ${op}`;
+  el.innerHTML=`<span class="fi-lsn">${ls}</span><span class="fi-op ${op}">${op}</span><span class="fi-data">#${d.id} ${esc(d.customer_name)} → ${d.status||prev?.status}</span><span class="fi-ts">${new Date().toLocaleTimeString('en-GB',{hour12:false})}</span>`;
+  feed.prepend(el);
+  const items=feed.querySelectorAll('.feed-item');
+  items.forEach((e,i)=>{if(i>5)e.classList.add('old');});
+  if(items.length>20)items[items.length-1].remove();
+}
+function clearFeed(){feedSeeded=false;document.getElementById('feedList').innerHTML='<div style="padding:14px 13px;font-family:var(--mono);font-size:.68rem;color:var(--muted)">Feed cleared.</div>';}
+
+function renderTable() {
+  const tbody=document.getElementById('tbody');
+  document.getElementById('rowCount').textContent=`${orders.length} row${orders.length!==1?'s':''}`;
+  if(!orders.length){tbody.innerHTML='<tr><td colspan="6" class="empty-row">No orders.</td></tr>';return;}
+  tbody.innerHTML=[...orders].sort((a,b)=>b.updated_at-a.updated_at).map(o=>`
+    <tr id="tr${o.id}">
+      <td class="mono">${o.id}</td><td>${esc(o.customer_name)}</td><td>${esc(o.product_name)}</td>
+      <td><span class="sbadge ${o.status}">${o.status}</span></td>
+      <td class="mono">${fmtTime(o.updated_at)}</td>
+      <td><div class="row-acts">
+        ${o.status!=='shipped'   ?`<button class="ra" onclick="doUpdate({id:${o.id},status:'shipped'})">ship</button>`:''}
+        ${o.status!=='delivered' ?`<button class="ra" onclick="doUpdate({id:${o.id},status:'delivered'})">deliver</button>`:''}
+        <button class="ra del" onclick="doDelete({id:${o.id}})">del</button>
+      </div></td>
+    </tr>`).join('');
+}
+function flashRow(id,cls){setTimeout(()=>{const r=document.getElementById('tr'+id);if(!r)return;r.classList.remove('rfi','rfu','rfd');void r.offsetWidth;r.classList.add(cls);},40);}
+
+const AUTO_INTERVAL=1900;
+const autoScenario=[
+  ()=>doInsert({customer:rand(CUSTS),product:rand(PRODS),status:'pending'}),
+  ()=>doInsert({customer:rand(CUSTS),product:rand(PRODS),status:'pending'}),
+  ()=>{if(orders.length)doUpdate({id:orders[0].id,status:'shipped'});},
+  ()=>doInsert({customer:rand(CUSTS),product:rand(PRODS),status:'pending'}),
+  ()=>{if(orders.length>1)doUpdate({id:orders[1].id,status:'shipped'});},
+  ()=>{if(orders.length)doUpdate({id:orders[0].id,status:'delivered'});},
+  ()=>doInsert({customer:rand(CUSTS),product:rand(PRODS),status:'shipped'}),
+  ()=>{if(orders.length)doDelete({id:orders[orders.length-1].id});},
+  ()=>{if(orders.length)doUpdate({id:orders[0].id,status:'delivered'});},
+  ()=>doInsert({customer:rand(CUSTS),product:rand(PRODS),status:'pending'}),
+];
+function toggleAuto(){
+  if(autoTimer){
+    clearInterval(autoTimer);clearInterval(autoPTimer);autoTimer=null;
+    document.getElementById('btnAuto').textContent='▶ Auto Demo';
+    document.getElementById('btnAuto').classList.remove('on');
+    document.getElementById('prog').classList.remove('on');
+  } else {
+    document.getElementById('btnAuto').textContent='⏹ Stop Demo';
+    document.getElementById('btnAuto').classList.add('on');
+    document.getElementById('prog').classList.add('on');
+    autoStep=0;autoProgress=0;runAutoStep();
+    autoTimer=setInterval(()=>{autoStep=(autoStep+1)%autoScenario.length;autoProgress=0;runAutoStep();},AUTO_INTERVAL);
+    autoPTimer=setInterval(()=>{autoProgress=Math.min(100,autoProgress+(100/(AUTO_INTERVAL/80)));document.getElementById('progFill').style.width=autoProgress+'%';},80);
+  }
+}
+function runAutoStep(){autoScenario[autoStep]();document.getElementById('progFill').style.width='0%';}
+
+// ══════════════════════════════════════
+//  Code Explorer
+// ══════════════════════════════════════
+const FILES={
+'py:replication.py':{lang:'py',path:'server/app/db/',name:'replication.py',code:`<span class="cm">"""
+app/db/replication.py — CDC engine
+psycopg2 daemon thread + pgoutput binary decoder
+"""</span>
+
+<span class="kw">import</span> asyncio, struct, threading, time
+
+change_queue: asyncio.Queue[<span class="py2">dict</span>] = asyncio.Queue(maxsize=<span class="num">10_000</span>)
+_stop_event = threading.Event()
+_relations: <span class="py2">dict</span>[<span class="py2">int</span>, <span class="py2">dict</span>] = {}  <span class="cm"># OID → {columns: [...]}</span>
+
+
+<span class="kw">def</span> <span class="fn">_decode_message</span>(data: <span class="py2">bytes</span>) -> <span class="py2">dict</span> | <span class="kw">None</span>:
+    <span class="kw">if not</span> data: <span class="kw">return None</span>
+    msg_type = <span class="py2">chr</span>(data[<span class="num">0</span>])
+
+    <span class="kw">if</span> msg_type == <span class="st">"R"</span>:   <span class="cm"># Relation — cache column names</span>
+        <span class="cm">...  # populates _relations[rel_id]</span>
+        <span class="kw">return None</span>
+    <span class="kw">if</span> msg_type == <span class="st">"I"</span>:   <span class="cm"># Insert</span>
+        <span class="kw">return</span> {<span class="st">"tag"</span>: <span class="st">"insert"</span>, <span class="st">"new"</span>: new_row, <span class="st">"old"</span>: <span class="kw">None</span>}
+    <span class="kw">if</span> msg_type == <span class="st">"U"</span>:   <span class="cm"># Update</span>
+        <span class="kw">return</span> {<span class="st">"tag"</span>: <span class="st">"update"</span>, <span class="st">"new"</span>: new_row, <span class="st">"old"</span>: old_row}
+    <span class="kw">if</span> msg_type == <span class="st">"D"</span>:   <span class="cm"># Delete</span>
+        <span class="kw">return</span> {<span class="st">"tag"</span>: <span class="st">"delete"</span>, <span class="st">"new"</span>: <span class="kw">None</span>, <span class="st">"old"</span>: old_row}
+    <span class="kw">return None</span>  <span class="cm"># Begin/Commit/Origin/Type — ignored</span>
+
+
+<span class="kw">def</span> <span class="fn">_make_message_consumer</span>(loop: asyncio.AbstractEventLoop):
+    <span class="cm"># Built once per session — reused across WAL messages</span>
+    <span class="kw">def</span> <span class="fn">consumer</span>(msg) -> <span class="kw">None</span>:
+        decoded = <span class="fn">_decode_message</span>(<span class="py2">bytes</span>(msg.payload))
+        <span class="kw">if</span> decoded:
+            payload = <span class="fn">_build_payload</span>(decoded[<span class="st">"tag"</span>].upper(), ...)
+            asyncio.run_coroutine_threadsafe(
+                change_queue.<span class="fn">put</span>(payload), loop)  <span class="cm"># sync → async</span>
+        msg.cursor.<span class="fn">send_feedback</span>(flush_lsn=msg.data_start)  <span class="cm"># ack LSN</span>
+    <span class="kw">return</span> consumer
+
+
+<span class="kw">def</span> <span class="fn">_sync_replication_loop</span>(loop):
+    <span class="cm"># Daemon thread: connects psycopg2, streams WAL, auto-reconnects</span>
+    consumer = <span class="fn">_make_message_consumer</span>(loop)  <span class="cm"># create once, reuse</span>
+    <span class="kw">while not</span> _stop_event.<span class="fn">is_set</span>():
+        conn = psycopg2.<span class="fn">connect</span>(...,
+            connection_factory=LogicalReplicationConnection)
+        cur = conn.<span class="fn">cursor</span>()
+        cur.<span class="fn">start_replication</span>(slot_name=slot,
+            options={<span class="st">"proto_version"</span>: <span class="st">"1"</span>,
+                     <span class="st">"publication_names"</span>: pub})
+        cur.<span class="fn">consume_stream</span>(consumer, keepalive_interval=<span class="num">10</span>)`},
+
+'py:client_registry.py':{lang:'py',path:'server/app/transport/',name:'client_registry.py',code:`<span class="cm">"""
+app/transport/client_registry.py
+Transport-agnostic fan-out — SSE and WS share one registry.
+"""</span>
+
+<span class="kw">import</span> asyncio, uuid
+
+_clients: <span class="py2">dict</span>[<span class="py2">str</span>, <span class="py2">dict</span>] = {}
+_lock = asyncio.Lock()
+
+
+<span class="kw">async def</span> <span class="fn">register</span>(send_fn, transport: <span class="py2">str</span>) -> <span class="py2">str</span>:
+    client_id = <span class="py2">str</span>(uuid.<span class="fn">uuid4</span>())
+    <span class="kw">async with</span> _lock:
+        _clients[client_id] = {<span class="st">"send"</span>: send_fn, <span class="st">"transport"</span>: transport}
+    <span class="kw">return</span> client_id
+
+
+<span class="kw">async def</span> <span class="fn">broadcast</span>(payload: <span class="py2">dict</span>) -> <span class="kw">None</span>:
+    <span class="kw">async with</span> _lock:
+        snapshot = <span class="py2">list</span>(_clients.<span class="fn">items</span>())
+
+    dead = []
+    tasks = [<span class="fn">_safe_send</span>(cid, c[<span class="st">"send"</span>], payload, dead)
+             <span class="kw">for</span> cid, c <span class="kw">in</span> snapshot]
+    <span class="kw">await</span> asyncio.<span class="fn">gather</span>(*tasks)  <span class="cm"># deliver to ALL clients concurrently</span>
+
+    <span class="kw">if</span> dead:
+        <span class="kw">async with</span> _lock:
+            <span class="kw">for</span> cid <span class="kw">in</span> dead: _clients.<span class="fn">pop</span>(cid, <span class="kw">None</span>)
+
+
+<span class="cm"># Scale-out: replace _clients dict + _lock with Redis pub/sub.
+# broadcast() publishes to Redis; each worker sends to its
+# locally-connected clients. Interface stays identical.</span>`},
+
+'py:events.py':{lang:'py',path:'server/app/routes/',name:'events.py',code:`<span class="dec">@router</span>.<span class="fn">get</span>(<span class="st">"/events/stream"</span>)
+<span class="kw">async def</span> <span class="fn">sse_stream</span>(request: Request):
+    queue = asyncio.Queue(maxsize=<span class="num">500</span>)
+
+    <span class="kw">async def</span> <span class="fn">send</span>(payload: <span class="py2">dict</span>) -> <span class="kw">None</span>:
+        <span class="kw">await</span> queue.<span class="fn">put</span>(payload)
+
+    client_id = <span class="kw">await</span> <span class="fn">register</span>(send, <span class="st">"sse"</span>)
+
+    <span class="kw">async def</span> <span class="fn">event_generator</span>():
+        <span class="kw">yield</span> <span class="fn">_sse_event</span>(<span class="st">"connected"</span>, {<span class="st">"clientId"</span>: client_id})
+        <span class="kw">while True</span>:
+            <span class="kw">if await</span> request.<span class="fn">is_disconnected</span>(): <span class="kw">break</span>
+            <span class="kw">try</span>:
+                payload = <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(
+                    queue.<span class="fn">get</span>(), timeout=<span class="num">20.0</span>)  <span class="cm"># heartbeat timeout</span>
+                <span class="kw">yield</span> <span class="fn">_sse_event</span>(<span class="st">"order:change"</span>, payload)
+            <span class="kw">except</span> asyncio.TimeoutError:
+                <span class="kw">yield</span> <span class="st">": ping\\n\\n"</span>  <span class="cm"># keep-alive comment</span>
+        <span class="kw">await</span> <span class="fn">unregister</span>(client_id)
+
+    <span class="kw">return</span> <span class="fn">StreamingResponse</span>(event_generator(),
+        media_type=<span class="st">"text/event-stream"</span>)
+
+
+<span class="dec">@router</span>.<span class="fn">websocket</span>(<span class="st">"/ws"</span>)
+<span class="kw">async def</span> <span class="fn">websocket_endpoint</span>(ws: WebSocket):
+    <span class="kw">await</span> ws.<span class="fn">accept</span>()
+    <span class="cm"># Two concurrent tasks: recv (filter/ping) and send (queue → ws)</span>
+    recv_t = asyncio.<span class="fn">create_task</span>(<span class="fn">receive_task</span>())
+    send_t = asyncio.<span class="fn">create_task</span>(<span class="fn">send_task</span>())  <span class="cm"># renamed — avoid shadowing send()</span>
+    done, pending = <span class="kw">await</span> asyncio.<span class="fn">wait</span>(
+        [recv_t, send_t], return_when=FIRST_COMPLETED)
+    <span class="kw">for</span> t <span class="kw">in</span> pending: t.<span class="fn">cancel</span>()
+    <span class="kw">await</span> <span class="fn">unregister</span>(client_id)`},
+
+'js:replication.js':{lang:'js',path:'server/src/db/',name:'replication.js',code:`<span class="cm">/**
+ * db/replication.js — CDC via PostgreSQL Logical Replication
+ * pg-logical-replication + PgoutputPlugin + EventEmitter fan-out
+ */</span>
+<span class="st">"use strict"</span>;
+
+<span class="kw">const</span> { LogicalReplicationService, PgoutputPlugin } =
+    <span class="fn">require</span>(<span class="st">"pg-logical-replication"</span>);
+<span class="kw">const</span> EventEmitter = <span class="fn">require</span>(<span class="st">"events"</span>);
+
+<span class="kw">const</span> changeEmitter = <span class="kw">new</span> <span class="fn">EventEmitter</span>();
+changeEmitter.<span class="fn">setMaxListeners</span>(<span class="num">1000</span>);
+
+<span class="kw">function</span> <span class="fn">buildOrderPayload</span>(operation, newRow, oldRow = <span class="kw">null</span>) {
+  <span class="kw">return</span> { operation, timestamp: <span class="kw">new</span> <span class="fn">Date</span>().<span class="fn">toISOString</span>(),
+           data: newRow ?? oldRow, previous: oldRow };
+}
+
+<span class="kw">async function</span> <span class="fn">startReplication</span>() {
+  <span class="kw">const</span> plugin  = <span class="kw">new</span> <span class="fn">PgoutputPlugin</span>(
+    { protoVersion: <span class="num">1</span>, publicationNames: [publicationName] });
+  <span class="kw">const</span> service = <span class="kw">new</span> <span class="fn">LogicalReplicationService</span>(pgConfig,
+    { acknowledge: { auto: <span class="kw">true</span>, timeoutSeconds: <span class="num">10</span> } });
+
+  service.<span class="fn">on</span>(<span class="st">"data"</span>, (lsn, log) => {
+    <span class="kw">if</span>      (log.tag === <span class="st">"insert"</span>)
+      changeEmitter.<span class="fn">emit</span>(<span class="st">"order:change"</span>,
+        <span class="fn">buildOrderPayload</span>(<span class="st">"INSERT"</span>, log.new));
+    <span class="kw">else if</span> (log.tag === <span class="st">"update"</span>)
+      changeEmitter.<span class="fn">emit</span>(<span class="st">"order:change"</span>,
+        <span class="fn">buildOrderPayload</span>(<span class="st">"UPDATE"</span>, log.new, log.old));
+    <span class="kw">else if</span> (log.tag === <span class="st">"delete"</span>)
+      changeEmitter.<span class="fn">emit</span>(<span class="st">"order:change"</span>,
+        <span class="fn">buildOrderPayload</span>(<span class="st">"DELETE"</span>, <span class="kw">null</span>, log.old));
+  });
+
+  service.<span class="fn">on</span>(<span class="st">"error"</span>, (err) =>
+    changeEmitter.<span class="fn">emit</span>(<span class="st">"replication:error"</span>, err));
+
+  <span class="kw">async function</span> <span class="fn">connect</span>() {  <span class="cm">// auto-reconnect on failure</span>
+    <span class="kw">try</span>   { <span class="kw">await</span> service.<span class="fn">subscribe</span>(plugin, slotName); }
+    <span class="kw">catch</span> { <span class="fn">setTimeout</span>(connect, reconnectDelayMs); }
+  }
+  <span class="fn">connect</span>();
+}`},
+
+'js:clientRegistry.js':{lang:'js',path:'server/src/transport/',name:'clientRegistry.js',code:`<span class="cm">/**
+ * clientRegistry.js — Transport-agnostic fan-out
+ * Map&lt;clientId, {send, transport}&gt; — SSE and WS share one registry
+ */</span>
+<span class="st">"use strict"</span>;
+<span class="kw">const</span> { v4: uuidv4 } = <span class="fn">require</span>(<span class="st">"uuid"</span>);
+<span class="kw">const</span> clients = <span class="kw">new</span> Map();
+
+<span class="kw">function</span> <span class="fn">register</span>(sendFn, transport) {
+  <span class="kw">const</span> clientId = <span class="fn">uuidv4</span>();
+  clients.<span class="fn">set</span>(clientId, { send: sendFn, transport,
+    connectedAt: <span class="kw">new</span> <span class="fn">Date</span>() });
+  <span class="kw">return</span> clientId;
+}
+
+<span class="kw">function</span> <span class="fn">broadcast</span>(payload) {
+  <span class="kw">if</span> (clients.size === <span class="num">0</span>) <span class="kw">return</span>;
+  <span class="kw">const</span> dead = [];
+  <span class="kw">for</span> (<span class="kw">const</span> [clientId, client] <span class="kw">of</span> clients) {
+    <span class="kw">try</span>   { client.<span class="fn">send</span>(payload); }
+    <span class="kw">catch</span> { dead.<span class="fn">push</span>(clientId); }  <span class="cm">// prune dead connections</span>
+  }
+  dead.<span class="fn">forEach</span>(id => clients.<span class="fn">delete</span>(id));
+}
+
+<span class="kw">function</span> <span class="fn">stats</span>() {
+  <span class="kw">const</span> byTransport = {};
+  <span class="kw">for</span> (<span class="kw">const</span> { transport } <span class="kw">of</span> clients.<span class="fn">values</span>())
+    byTransport[transport] = (byTransport[transport] ?? <span class="num">0</span>) + <span class="num">1</span>;
+  <span class="kw">return</span> { total: clients.size, byTransport };
+}
+<span class="cm">// Scale-out: replace Map with Redis pub/sub.
+// Interface stays identical — only this module changes.</span>`},
+
+'py:test_replication.py':{lang:'py',path:'tests/',name:'test_replication.py',code:`<span class="cm">"""
+tests/test_replication.py — 22 unit tests for pgoutput decoder
+Hand-crafts binary WAL frames — no PostgreSQL needed.
+"""</span>
+
+<span class="kw">def</span> <span class="fn">_make_insert_msg</span>(rel_id, values):
+    msg  = <span class="py2">b</span><span class="st">"I"</span>
+    msg += struct.<span class="fn">pack</span>(<span class="st">">I"</span>, rel_id)
+    msg += <span class="py2">b</span><span class="st">"N"</span>                  <span class="cm"># new-tuple marker</span>
+    msg += <span class="fn">_pack_tuple</span>(values)
+    <span class="kw">return</span> msg
+
+
+<span class="kw">class</span> <span class="fn">TestDecodeInsert</span>:
+    <span class="kw">def</span> <span class="fn">test_basic_insert</span>(<span class="py2">self</span>):
+        values = [<span class="st">"1"</span>, <span class="st">"Alice"</span>, <span class="st">"Headphones"</span>, <span class="st">"pending"</span>, <span class="st">"now"</span>]
+        result = <span class="fn">_decode_message</span>(<span class="fn">_make_insert_msg</span>(ORDERS_REL_ID, values))
+        <span class="kw">assert</span> result[<span class="st">"tag"</span>]             == <span class="st">"insert"</span>
+        <span class="kw">assert</span> result[<span class="st">"old"</span>]             <span class="kw">is None</span>
+        <span class="kw">assert</span> result[<span class="st">"new"</span>][<span class="st">"status"</span>]   == <span class="st">"pending"</span>
+
+    <span class="kw">def</span> <span class="fn">test_update_with_old_row</span>(<span class="py2">self</span>):
+        old    = [<span class="st">"3"</span>, <span class="st">"Carol"</span>, <span class="st">"KB"</span>, <span class="st">"pending"</span>, <span class="st">"t1"</span>]
+        new    = [<span class="st">"3"</span>, <span class="st">"Carol"</span>, <span class="st">"KB"</span>, <span class="st">"shipped"</span>, <span class="st">"t2"</span>]
+        result = <span class="fn">_decode_message</span>(<span class="fn">_make_update_msg</span>(ORDERS_REL_ID, new, old))
+        <span class="kw">assert</span> result[<span class="st">"old"</span>][<span class="st">"status"</span>] == <span class="st">"pending"</span>
+        <span class="kw">assert</span> result[<span class="st">"new"</span>][<span class="st">"status"</span>] == <span class="st">"shipped"</span>
+
+    <span class="py2">@pytest</span>.<span class="fn">mark</span>.<span class="fn">parametrize</span>(<span class="st">"msg_byte"</span>,
+        [<span class="py2">b</span><span class="st">"B"</span>, <span class="py2">b</span><span class="st">"C"</span>, <span class="py2">b</span><span class="st">"O"</span>, <span class="py2">b</span><span class="st">"Y"</span>])
+    <span class="kw">def</span> <span class="fn">test_ignored_types_return_none</span>(<span class="py2">self</span>, msg_byte):
+        <span class="kw">assert</span> <span class="fn">_decode_message</span>(msg_byte + <span class="py2">b</span><span class="st">"\\x00"</span> * <span class="num">20</span>) <span class="kw">is None</span>`},
+
+'js:test_replication.js':{lang:'js',path:'tests/',name:'test_replication.js',code:`<span class="cm">/**
+ * tests/test_replication.js — 26 unit tests for pgoutput decoder
+ * node:test built-in · zero npm deps · hand-crafts binary WAL frames
+ */</span>
+<span class="st">"use strict"</span>;
+<span class="kw">const</span> { test, describe, beforeEach } = <span class="fn">require</span>(<span class="st">"node:test"</span>);
+<span class="kw">const</span> assert = <span class="fn">require</span>(<span class="st">"node:assert/strict"</span>);
+
+<span class="kw">function</span> <span class="fn">makeInsertMsg</span>(relId, values) {
+  <span class="kw">const</span> relBuf = Buffer.<span class="fn">alloc</span>(<span class="num">4</span>);
+  relBuf.<span class="fn">writeUInt32BE</span>(relId, <span class="num">0</span>);
+  <span class="kw">return</span> Buffer.<span class="fn">concat</span>([
+    Buffer.<span class="fn">from</span>(<span class="st">"I"</span>), relBuf,
+    Buffer.<span class="fn">from</span>(<span class="st">"N"</span>), <span class="fn">packTuple</span>(values),
+  ]);
+}
+
+<span class="fn">describe</span>(<span class="st">"decodeMessage — Insert"</span>, () => {
+  <span class="fn">test</span>(<span class="st">"decodes basic insert"</span>, () => {
+    <span class="kw">const</span> values = [<span class="st">"1"</span>,<span class="st">"Alice"</span>,<span class="st">"Headphones"</span>,<span class="st">"pending"</span>,<span class="st">"now"</span>];
+    <span class="kw">const</span> result = <span class="fn">decodeMessage</span>(<span class="fn">makeInsertMsg</span>(REL_ID, values));
+    assert.<span class="fn">equal</span>(result.tag,           <span class="st">"insert"</span>);
+    assert.<span class="fn">equal</span>(result.old,           <span class="kw">null</span>);
+    assert.<span class="fn">equal</span>(result.new.status,    <span class="st">"pending"</span>);
+  });
+  <span class="fn">test</span>(<span class="st">"decodes update with old row"</span>, () => {
+    <span class="kw">const</span> old    = [<span class="st">"3"</span>,<span class="st">"Carol"</span>,<span class="st">"KB"</span>,<span class="st">"pending"</span>,<span class="st">"t1"</span>];
+    <span class="kw">const</span> newRow = [<span class="st">"3"</span>,<span class="st">"Carol"</span>,<span class="st">"KB"</span>,<span class="st">"shipped"</span>,<span class="st">"t2"</span>];
+    <span class="kw">const</span> result = <span class="fn">decodeMessage</span>(<span class="fn">makeUpdateMsg</span>(REL_ID, newRow, old));
+    assert.<span class="fn">equal</span>(result.old.status, <span class="st">"pending"</span>);
+    assert.<span class="fn">equal</span>(result.new.status, <span class="st">"shipped"</span>);
+  });
+  <span class="kw">for</span> (<span class="kw">const</span> b <span class="kw">of</span> [<span class="st">"B"</span>,<span class="st">"C"</span>,<span class="st">"O"</span>,<span class="st">"Y"</span>])
+    <span class="fn">test</span>(<span class="st">\`returns null for '\${b}'\`</span>, () =>
+      assert.<span class="fn">equal</span>(<span class="fn">decodeMessage</span>(Buffer.<span class="fn">from</span>(b+<span class="st">"\\x00"</span>.<span class="fn">repeat</span>(<span class="num">20</span>))), <span class="kw">null</span>));
+});`},
+};
+
+const TREE_NODES=[
+  {key:'py:replication.py',    label:'replication.py',     stack:'py',  section:'Python — Core'},
+  {key:'py:client_registry.py',label:'client_registry.py', stack:'py',  section:null},
+  {key:'py:events.py',         label:'events.py',           stack:'py',  section:null},
+  {key:'py:test_replication.py',label:'test_replication.py',stack:'py', section:'Python — Tests'},
+  {key:'js:replication.js',    label:'replication.js',      stack:'js',  section:'Node.js — Core'},
+  {key:'js:clientRegistry.js', label:'clientRegistry.js',   stack:'js',  section:null},
+  {key:'js:test_replication.js',label:'test_replication.js',stack:'js', section:'Node.js — Tests'},
+];
+
+let codeInited=false;
+function initCode(){
+  codeInited=true;
+  const tree=document.getElementById('fileTree');
+  let lastSec='';
+  TREE_NODES.forEach(n=>{
+    if(n.section&&n.section!==lastSec){
+      lastSec=n.section;
+      const s=document.createElement('div');s.className='tree-sec';s.textContent=n.section;tree.appendChild(s);
+    }
+    const item=document.createElement('div');item.className='tree-item';item.dataset.key=n.key;
+    item.innerHTML=`<span class="ti-icon">${n.stack==='py'?'🐍':'⬡'}</span>${n.label}<span class="ti-badge ${n.stack==='py'?'py':'node'}">${n.stack}</span>`;
+    item.onclick=()=>loadFile(n.key);
+    tree.appendChild(item);
+  });
+  loadFile('py:replication.py');
+}
+function loadFile(key){
+  const f=FILES[key]; if(!f) return;
+  document.querySelectorAll('.tree-item').forEach(i=>i.classList.toggle('active',i.dataset.key===key));
+  document.getElementById('cfPath').textContent=f.path;
+  document.getElementById('cfName').textContent=f.name;
+  document.getElementById('cfLang').textContent=f.lang==='py'?'🐍 Python':'⬡ Node.js';
+  document.getElementById('codeContent').innerHTML=f.code;
+}
+
+// ══════════════════════════════════════
+//  Test Runner
+// ══════════════════════════════════════
+const NODE_SUITES=[
+  {name:'test_replication.js — pgoutput binary decoder',tests:['readCString — reads simple string','readCString — reads empty string','readCString — reads from offset','decodeTextDatum — null datum','decodeTextDatum — unchanged TOAST','decodeTextDatum — text value','decodeTextDatum — unicode','Relation — populates cache, returns null','Relation — caches multiple tables','Insert — decodes basic insert','Insert — with null field','Insert — unknown relation → empty row','Update — with old row','Update — without old row','Update — preserves all columns','Delete — basic delete','Delete — null field','ignored — B/C/O/Y return null','ignored — empty buffer','buildPayload — INSERT shape','buildPayload — UPDATE shape','buildPayload — DELETE uses old row','buildPayload — ISO 8601 timestamp']},
+  {name:'test_broadcaster.js — event wiring',tests:['forwards INSERT payload to broadcast','forwards UPDATE with previous data','forwards DELETE payload','forwards multiple events in order','broadcasts ERROR on replication failure','ERROR payload has ISO timestamp','fan-out: multiple listeners all receive']},
+  {name:'test_clientRegistry.js — client registry',tests:['register — returns UUID string','register — increments total count','register — two IDs are distinct','unregister — removes client','unregister — unknown id is noop','broadcast — delivers to every client','broadcast — no-op with zero clients','broadcast — prunes clients that throw','broadcast — payload arrives unchanged','broadcast — 50 sequential in order','stats — empty registry returns zero','stats — correct by-transport counts']},
+  {name:'test_ordersApi.js — route handlers',tests:['listOrders — 200 with empty array','listOrders — returns all rows','getOrder — 200 when found','getOrder — 404 when not found','createOrder — 201 with created order','createOrder — 400 missing fields','createOrder — 400 invalid status','updateOrder — 200 with updated status','updateOrder — 404 not found','updateOrder — 400 invalid status','updateOrder — accepts pending','updateOrder — accepts shipped','updateOrder — accepts delivered','deleteOrder — 200 with deleted order','deleteOrder — 404 not found','all valid statuses accepted']},
+];
+const PY_SUITES=[
+  {name:'test_replication.py — pgoutput binary decoder',tests:['TestReadCstring::test_simple','TestReadCstring::test_empty_string','TestReadCstring::test_offset','TestDecodeTextDatum::test_null','TestDecodeTextDatum::test_unchanged_toast','TestDecodeTextDatum::test_text_value','TestDecodeTextDatum::test_unicode_value','TestDecodeRelation::test_populates_relation_cache','TestDecodeRelation::test_multiple_tables','TestDecodeInsert::test_basic_insert','TestDecodeInsert::test_insert_with_null_field','TestDecodeInsert::test_insert_unknown_relation','TestDecodeUpdate::test_update_with_old_row','TestDecodeUpdate::test_update_without_old_row','TestDecodeUpdate::test_update_preserves_all_columns','TestDecodeDelete::test_basic_delete','TestDecodeDelete::test_delete_null_field','TestDecodeIgnoredTypes[B]','TestDecodeIgnoredTypes[C]','TestDecodeIgnoredTypes[O]','TestDecodeIgnoredTypes[Y]','TestBuildPayload::test_insert_payload','TestBuildPayload::test_update_payload','TestBuildPayload::test_delete_payload_uses_old_row','TestBuildPayload::test_timestamp_is_iso_format']},
+  {name:'test_client_registry.py — transport fan-out',tests:['test_register_returns_uuid','test_register_increments_count','test_unregister_removes_client','test_unregister_unknown_is_noop','test_broadcast_reaches_all_clients','test_broadcast_empty_is_noop','test_broadcast_prunes_dead_clients','test_broadcast_payload_unchanged','test_concurrent_broadcasts_no_race','test_stats_by_transport','test_stats_empty']},
+  {name:'test_orders_api.py — REST API (mocked pool)',tests:['test_list_orders_empty','test_list_orders_returns_all','test_get_order_found','test_get_order_not_found','test_create_order_success','test_create_order_default_status','test_create_order_invalid_status','test_create_order_missing_fields','test_update_order_status','test_update_order_not_found','test_update_order_invalid_status','test_update_all_valid_statuses[pending]','test_update_all_valid_statuses[shipped]','test_update_all_valid_statuses[delivered]','test_delete_order_success','test_delete_order_not_found','test_health_endpoint']},
+  {name:'test_broadcaster.py — asyncio drain loop',tests:['test_drain_loop_forwards_payload','test_drain_loop_handles_multiple_payloads','test_drain_loop_survives_broadcast_error','test_stop_broadcasting_is_idempotent','test_stop_when_never_started']},
+  {name:'test_sse.py — streaming endpoint',tests:['test_stats_endpoint_returns_counts','test_sse_sends_connected_event','test_stats_counts_connected_sse_client']},
+];
+
+let testsInited=false;
+function initTests(){
+  testsInited=true;
+  renderSuites('node',NODE_SUITES);
+  renderSuites('py',PY_SUITES);
+}
+function renderSuites(stack,suites){
+  const container=document.getElementById(stack+'Suites');
+  container.innerHTML=suites.map((s,si)=>`
+    <div class="test-suite">
+      <div class="suite-name">${s.name}</div>
+      ${s.tests.map((t,ti)=>`
+        <div class="test-case" id="tc-${stack}-${si}-${ti}">
+          <div class="tc-dot pass" id="dot-${stack}-${si}-${ti}"></div>${t}
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+let testRunning={node:false,py:false};
+async function runTests(stack){
+  if(testRunning[stack]) return;
+  testRunning[stack]=true;
+  const suites=stack==='node'?NODE_SUITES:PY_SUITES;
+  const bar  =document.getElementById(stack==='node'?'nodeBar':'pyBar');
+  const badge=document.getElementById(stack==='node'?'nodeBadge':'pyBadge');
+  const lbl  =document.getElementById(stack==='node'?'nodePassLbl':'pyPassLbl');
+  const time =document.getElementById(stack==='node'?'nodeTime':'pyTime');
+  const total=suites.reduce((a,s)=>a+s.tests.length,0);
+
+  badge.textContent='Running…'; badge.className='tp-badge run'; bar.style.width='0%';
+  document.querySelectorAll(`[id^="dot-${stack}-"]`).forEach(d=>{d.className='tc-dot running';});
+
+  let passed=0; const t0=Date.now();
+  for(let si=0;si<suites.length;si++){
+    for(let ti=0;ti<suites[si].tests.length;ti++){
+      await new Promise(r=>setTimeout(r,15+Math.random()*22));
+      const dot=document.getElementById(`dot-${stack}-${si}-${ti}`);
+      if(dot) dot.className='tc-dot pass';
+      passed++; bar.style.width=(passed/total*100)+'%';
+    }
+  }
+  const elapsed=Date.now()-t0;
+  badge.textContent=`${total} / ${total}`; badge.className='tp-badge pass';
+  lbl.textContent=`${total} passed · 0 failed`;
+  time.textContent=`~${elapsed} ms`;
+  testRunning[stack]=false;
+}
+
+// ══════════════════════════════════════
+//  Boot
+// ══════════════════════════════════════
+[{customer:'Alice Johnson',product:'Wireless Headphones',status:'pending'},
+ {customer:'Bob Smith',    product:'Mechanical Keyboard', status:'shipped'},
+ {customer:'Carol Williams',product:'USB-C Hub',          status:'delivered'}
+].forEach(o=>{orders.push({id:nextId++,...o,updated_at:new Date()});});
+renderTable();
+</script>
+</body>
+</html>

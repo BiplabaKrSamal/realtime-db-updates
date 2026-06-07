@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: apt_py_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aptuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aptpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-aptdb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_replication_slots=10
+        -c max_wal_senders=10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aptuser} -d ${POSTGRES_DB:-aptdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: apt_py_server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-3000}
+      HOST: 0.0.0.0
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aptuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aptpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-aptdb}
+      REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-orders_slot}
+      PUBLICATION_NAME: ${PUBLICATION_NAME:-orders_pub}
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
