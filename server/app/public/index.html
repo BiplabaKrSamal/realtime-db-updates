@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orders — Real-Time Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3e;
+      --text:     #e2e4f0;
+      --muted:    #6b7280;
+      --accent:   #6366f1;
+      --green:    #22c55e;
+      --yellow:   #f59e0b;
+      --blue:     #3b82f6;
+      --red:      #ef4444;
+      --radius:   8px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+
+    header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+
+    #status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+    #status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    main { padding: 32px; max-width: 1100px; margin: 0 auto; }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    input, select, button {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.85rem;
+      padding: 8px 14px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    button { cursor: pointer; transition: opacity 0.2s; }
+    button:hover { opacity: 0.85; }
+
+    .btn-primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    .btn-danger  { background: var(--red);    border-color: var(--red); }
+
+    .form-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .form-row input { width: 200px; }
+
+    /* Activity feed */
+    #feed-section { margin-bottom: 40px; }
+    #feed-section h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; }
+
+    #feed {
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .feed-item {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      border-left: 3px solid var(--border);
+      background: var(--surface);
+      font-size: 0.82rem;
+      animation: slideIn 0.25s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .feed-item.INSERT { border-left-color: var(--green); }
+    .feed-item.UPDATE { border-left-color: var(--blue);  }
+    .feed-item.DELETE { border-left-color: var(--red);   }
+
+    .feed-op  { font-weight: 700; font-size: 0.75rem; text-transform: uppercase; margin-right: 8px; }
+    .op-INSERT { color: var(--green); }
+    .op-UPDATE { color: var(--blue);  }
+    .op-DELETE { color: var(--red);   }
+    .feed-time { color: var(--muted); font-size: 0.75rem; flex-shrink: 0; }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Orders table */
+    #orders-section h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface); }
+    tbody tr.flash { animation: flash 0.8s ease; }
+    @keyframes flash {
+      0%   { background: rgba(99,102,241,0.25); }
+      100% { background: transparent; }
+    }
+    td { padding: 12px 14px; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .badge.pending   { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .badge.shipped   { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .badge.delivered { background: rgba(34,197,94,0.15);  color: var(--green); }
+
+    .action-btn {
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      margin-right: 4px;
+    }
+
+    #empty-state { text-align: center; padding: 48px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Orders <span>Live Dashboard</span></h1>
+  <div id="status-badge">
+    <div id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+    <span id="client-count"></span>
+  </div>
+</header>
+
+<main>
+  <!-- Create order form -->
+  <div class="toolbar">
+    <div class="form-row">
+      <input id="customer" type="text" placeholder="Customer name" />
+      <input id="product"  type="text" placeholder="Product name" />
+      <select id="newStatus">
+        <option value="pending">Pending</option>
+        <option value="shipped">Shipped</option>
+        <option value="delivered">Delivered</option>
+      </select>
+      <button class="btn-primary" onclick="createOrder()">+ Add Order</button>
+    </div>
+  </div>
+
+  <!-- Activity feed -->
+  <div id="feed-section">
+    <h2>Live Activity Feed</h2>
+    <div id="feed"><div style="color:var(--muted);font-size:0.82rem;padding:8px">Waiting for events…</div></div>
+  </div>
+
+  <!-- Orders table -->
+  <div id="orders-section">
+    <h2>Orders</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Customer</th><th>Product</th><th>Status</th><th>Updated At</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="orders-body">
+        <tr><td colspan="6" id="empty-state">Loading orders…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let orders = {};   // id → order object
+  let feedCleared = false;
+
+  // ── SSE connection ─────────────────────────────────────────────────────────
+  const evtSource = new EventSource("/events/stream");
+
+  evtSource.addEventListener("connected", (e) => {
+    const data = JSON.parse(e.data);
+    setStatus(true, `Connected  ·  ${data.clientId.slice(0,8)}`);
+    fetchOrders();
+    fetchStats();
+  });
+
+  evtSource.addEventListener("order:change", (e) => {
+    const { operation, data, previous, timestamp } = JSON.parse(e.data);
+    handleChange(operation, data, previous, timestamp);
+    fetchStats();
+  });
+
+  evtSource.onerror = () => setStatus(false, "Reconnecting…");
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function setStatus(ok, text) {
+    document.getElementById("status-dot").className = ok ? "connected" : "";
+    document.getElementById("status-text").textContent = text;
+  }
+
+  async function fetchOrders() {
+    const res = await fetch("/api/orders");
+    const { data } = await res.json();
+    orders = {};
+    data.forEach(o => orders[o.id] = o);
+    renderTable();
+  }
+
+  async function fetchStats() {
+    const res = await fetch("/events/stats");
+    const { total } = await res.json();
+    document.getElementById("client-count").textContent = `· ${total} client${total !== 1 ? "s" : ""}`;
+  }
+
+  function handleChange(operation, data, previous, timestamp) {
+    pushFeedItem(operation, data ?? previous, timestamp);
+
+    if (operation === "INSERT" || operation === "UPDATE") {
+      orders[data.id] = data;
+    } else if (operation === "DELETE") {
+      delete orders[previous.id];
+    }
+    renderTable(data?.id ?? previous?.id);
+  }
+
+  function pushFeedItem(op, row, ts) {
+    const feed = document.getElementById("feed");
+    if (!feedCleared) { feed.innerHTML = ""; feedCleared = true; }
+
+    const el = document.createElement("div");
+    el.className = `feed-item ${op}`;
+    const name = row?.customer_name ?? "–";
+    const prod = row?.product_name  ?? "–";
+    const id   = row?.id ?? "?";
+    const time = new Date(ts).toLocaleTimeString();
+
+    el.innerHTML = `
+      <span>
+        <span class="feed-op op-${op}">${op}</span>
+        #${id} · <strong>${name}</strong> — ${prod}
+        ${op === "UPDATE" ? `<span style="color:var(--muted)">→ ${row.status}</span>` : ""}
+      </span>
+      <span class="feed-time">${time}</span>
+    `;
+    feed.prepend(el);
+    if (feed.children.length > 30) feed.lastElementChild.remove();
+  }
+
+  function renderTable(flashId = null) {
+    const tbody = document.getElementById("orders-body");
+    const list  = Object.values(orders).sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="6" id="empty-state">No orders yet. Create one above!</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map(o => `
+      <tr id="row-${o.id}" class="${o.id == flashId ? 'flash' : ''}">
+        <td>${o.id}</td>
+        <td>${esc(o.customer_name)}</td>
+        <td>${esc(o.product_name)}</td>
+        <td><span class="badge ${o.status}">${o.status}</span></td>
+        <td>${new Date(o.updated_at).toLocaleString()}</td>
+        <td>
+          ${o.status !== 'shipped'    ? `<button class="action-btn" onclick="updateStatus(${o.id},'shipped')">→ Shipped</button>` : ''}
+          ${o.status !== 'delivered'  ? `<button class="action-btn" onclick="updateStatus(${o.id},'delivered')">→ Delivered</button>` : ''}
+          <button class="action-btn btn-danger" onclick="deleteOrder(${o.id})">✕</button>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  function esc(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  async function createOrder() {
+    const customer = document.getElementById("customer").value.trim();
+    const product  = document.getElementById("product").value.trim();
+    const status   = document.getElementById("newStatus").value;
+    if (!customer || !product) return alert("Fill in customer and product.");
+
+    await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_name: customer, product_name: product, status }),
+    });
+    document.getElementById("customer").value = "";
+    document.getElementById("product").value  = "";
+  }
+
+  async function updateStatus(id, status) {
+    await fetch(`/api/orders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async function deleteOrder(id) {
+    if (!confirm(`Delete order #${id}?`)) return;
+    await fetch(`/api/orders/${id}`, { method: "DELETE" });
+  }
+</script>
+</body>
+</html>
